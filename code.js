@@ -26,11 +26,11 @@ function genererDossiersEleves() {
     // =========================================================================
     // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
     // =========================================================================
-	  const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
+      const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
  	  const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
       const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
       const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
-      const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc';
+      const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
     // =========================================================================
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
@@ -80,7 +80,6 @@ function genererDossiersEleves() {
     let compteurEcrases = 0;
 
     // Variable pour mémoriser le choix de l'utilisateur sur la gestion des doublons
-    // null = pas encore demandé, "ecraser" = écraser, "ignorer" = passer outre
     let choixDoublon = null;
 
     // Boucle sur chaque élève
@@ -98,7 +97,8 @@ function genererDossiersEleves() {
         "langue": listingData[i][5],
         "session": listingData[i][6],
         "option": listingData[i][7],
-        "4e en option": listingData[i][8]
+        "4e en option": listingData[i][8],
+        "Date Affichage Complet": listingData[i][9]
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
