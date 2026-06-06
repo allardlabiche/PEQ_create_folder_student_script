@@ -98,7 +98,8 @@ function genererDossiersEleves() {
         "session": listingData[i][6],
         "option": listingData[i][7],
         "4e en option": listingData[i][8],
-        "affichage": listingData[i][9]
+        "affichage": listingData[i][9],
+        "matricule": listingData[i][10],
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
