@@ -1,28 +1,46 @@
 /**
- * Crée un menu personnalisé dans Google Sheets lors de l'ouverture du fichier
- * et gère la visibilité des onglets matières selon la date d'affichage.
+ * Crée un menu personnalisé dans Google Sheets lors de l'ouverture du fichier.
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🎓 Automatisation PEQ')
     .addItem('Générer les dossiers élèves', 'genererDossiersEleves')
     .addToUi();
-
-  // APPEL DE LA NOUVELLE FONCTION A L'OUVERTURE DU FICHIER
-  verifierDateAffichageOnglets();
 }
 
 /**
- * Vérifie si la date d'affichage en Config!B12 est dépassée.
- * Si oui, affiche les onglets spécifiques. Si non, les masque.
+ * Cette fonction DOIT être liée à un déclencheur installable "Lors de l'ouverture".
+ * Elle vérifie la date en Config!B12 et applique un masquage strict.
  */
-function verifierDateAffichageOnglets() {
+function verifierDateAffichageOngletsInstallable() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ongletConfig = ss.getSheetByName("Config");
     
-    if (!ongletConfig) return; // Sécurité si l'onglet n'existe pas
+    if (!ongletConfig) return; 
 
+    // Liste des adresses emails d'administration (en minuscules)
+    const utilisateursAutorises = [
+      "benjamin.allard@istlm.org",
+      "peq-c3d-biche@istlm.org",
+      "peq-c3d-mons@istlm.org"
+    ];
+
+    // Avec un déclencheur installé, cette ligne fonctionne enfin à 100% !
+    const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
+
+    // Si c'est un des 3 administrateurs qui ouvre le fichier, on affiche TOUT pour vous permettre de travailler
+    if (utilisateursAutorises.includes(emailUtilisateurActuel)) {
+      const tousLesOnglets = ss.getSheets();
+      tousLesOnglets.forEach(onglet => {
+        if (onglet.getName() !== "Config") onglet.showSheet();
+      });
+      ongletConfig.showSheet(); // Reste visible pour vous
+      return; // On arrête ici pour les profs
+    }
+
+    // --- CODE POUR LES ÉLÈVES (OU EMAIL NON RECONNU) ---
+    
     // 1. Liste des onglets concernés par la date d'affichage
     const ongletsAControler = [
       "Math-EQ", "FR-EQ", "FHG", "FSE-EQ", "FS-EQ", 
@@ -33,28 +51,38 @@ function verifierDateAffichageOnglets() {
     const valeurB12 = ongletConfig.getRange("B12").getValue();
     
     if (!(valeurB12 instanceof Date)) {
-      Logger.log("La cellule B12 ne contient pas une date valide.");
+      // Si ce n'est pas une date, on masque tout par sécurité
+      ongletsAControler.forEach(nomOnglet => {
+        let onglet = ss.getSheetByName(nomOnglet);
+        if (onglet) onglet.hideSheet();
+      });
       return; 
     }
 
-    // On compare uniquement les dates (sans les heures)
+    // Comparaison des dates (sans les heures)
     const aujourdhui = new Date();
     aujourdhui.setHours(0,0,0,0);
     
     const dateAffichage = new Date(valeurB12);
     dateAffichage.setHours(0,0,0,0);
 
-    // 3. Application de la visibilité
-    ongletsAControler.forEach(nomOnglet => {
-      let onglet = ss.getSheetByName(nomOnglet);
-      if (onglet) {
-        if (aujourdhui >= dateAffichage) {
-          onglet.showSheet(); // La date est atteinte ou dépassée -> On affiche l'onglet
-        } else {
-          onglet.hideSheet(); // La date n'est pas encore atteinte -> On masque l'onglet
-        }
-      }
-    });
+    // 3. Application de la visibilité pour l'élève
+    if (aujourdhui >= dateAffichage) {
+      // La date est atteinte ou dépassée -> On affiche les matières
+      ongletsAControler.forEach(nomOnglet => {
+        let onglet = ss.getSheetByName(nomOnglet);
+        if (onglet) onglet.showSheet();
+      });
+    } else {
+      // La date n'est pas encore atteinte -> On masque obligatoirement
+      ongletsAControler.forEach(nomOnglet => {
+        let onglet = ss.getSheetByName(nomOnglet);
+        if (onglet) onglet.hideSheet();
+      });
+    }
+
+    // On s'assure que l'onglet Config reste masqué pour l'élève en tout temps
+    ongletConfig.hideSheet();
 
   } catch(e) {
     Logger.log("Erreur lors du contrôle de la date d'affichage : " + e.message);
@@ -90,8 +118,6 @@ function genererDossiersEleves() {
       "peq-c3d-biche@istlm.org",
       "peq-c3d-mons@istlm.org"
     ];
-
-    const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
     const configSs = SpreadsheetApp.openById(CONFIG_CELLULE_ID);
@@ -258,7 +284,7 @@ function genererDossiersEleves() {
           }
         }
 
-        // --- VERROUILLAGE ET MASQUAGE ABSOLU DE L'ONGLET CONFIG ---
+        // --- VERROUILLAGE DE L'ONGLET CONFIG ---
         try {
           let protections = ongletConfig.getProtections(SpreadsheetApp.ProtectionType.SHEET);
           let protection = protections.length > 0 ? protections[0] : ongletConfig.protect().setDescription('Sécurité Auto Config');
