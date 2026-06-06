@@ -1,11 +1,64 @@
 /**
- * Crée un menu personnalisé dans Google Sheets lors de l'ouverture du fichier.
+ * Crée un menu personnalisé dans Google Sheets lors de l'ouverture du fichier
+ * et gère la visibilité des onglets matières selon la date d'affichage.
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🎓 Automatisation PEQ')
     .addItem('Générer les dossiers élèves', 'genererDossiersEleves')
     .addToUi();
+
+  // APPEL DE LA NOUVELLE FONCTION A L'OUVERTURE DU FICHIER
+  verifierDateAffichageOnglets();
+}
+
+/**
+ * Vérifie si la date d'affichage en Config!B12 est dépassée.
+ * Si oui, affiche les onglets spécifiques. Si non, les masque.
+ */
+function verifierDateAffichageOnglets() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ongletConfig = ss.getSheetByName("Config");
+    
+    if (!ongletConfig) return; // Sécurité si l'onglet n'existe pas
+
+    // 1. Liste des onglets concernés par la date d'affichage
+    const ongletsAControler = [
+      "Math-EQ", "FR-EQ", "FHG", "FSE-EQ", "FS-EQ", 
+      "Rel", "EP", "LM1", "Math-P", "FR-P", "FSE-P", "FS-P"
+    ];
+
+    // 2. Récupération de la date cible en B12
+    const valeurB12 = ongletConfig.getRange("B12").getValue();
+    
+    if (!(valeurB12 instanceof Date)) {
+      Logger.log("La cellule B12 ne contient pas une date valide.");
+      return; 
+    }
+
+    // On compare uniquement les dates (sans les heures)
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0,0,0,0);
+    
+    const dateAffichage = new Date(valeurB12);
+    dateAffichage.setHours(0,0,0,0);
+
+    // 3. Application de la visibilité
+    ongletsAControler.forEach(nomOnglet => {
+      let onglet = ss.getSheetByName(nomOnglet);
+      if (onglet) {
+        if (aujourdhui >= dateAffichage) {
+          onglet.showSheet(); // La date est atteinte ou dépassée -> On affiche l'onglet
+        } else {
+          onglet.hideSheet(); // La date n'est pas encore atteinte -> On masque l'onglet
+        }
+      }
+    });
+
+  } catch(e) {
+    Logger.log("Erreur lors du contrôle de la date d'affichage : " + e.message);
+  }
 }
 
 /**
@@ -23,7 +76,7 @@ function genererDossiersEleves() {
     const ui = SpreadsheetApp.getUi();
 
     // =========================================================================
-    // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
+    // CONFIGURATION : ID de vos fichiers
     // =========================================================================
     const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
     const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
@@ -32,14 +85,12 @@ function genererDossiersEleves() {
     const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
     // =========================================================================
 
-    // Liste des adresses emails autorisées à voir/modifier l'onglet "Config" (en minuscules)
     const utilisateursAutorises = [
       "benjamin.allard@istlm.org",
       "peq-c3d-biche@istlm.org",
       "peq-c3d-mons@istlm.org"
     ];
 
-    // Récupération de l'adresse email de la personne qui exécute le script
     const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
@@ -91,7 +142,6 @@ function genererDossiersEleves() {
 
     let choixDoublon = null;
 
-    // Boucle sur chaque élève
     for (let i = 1; i < listingData.length; i++) {
       let ligneEleve = listingData[i];
       
@@ -184,7 +234,6 @@ function genererDossiersEleves() {
         compteurSucces++;
       }
 
-      // SCRIPT - ACTION 3 : Écriture sécurisée des données
       let ongletConfig = nouveauSs.getSheetByName("Config");
       
       if (ongletConfig) {
@@ -218,26 +267,17 @@ function genererDossiersEleves() {
           protection.removeEditors(protection.getEditors());
           
           utilisateursAutorises.forEach(email => {
-            try {
-              protection.addEditor(email);
-            } catch(err) {}
+            try { protection.addEditor(email); } catch(err) {}
           });
 
-          // AJOUT MAJEUR : Masque automatiquement la feuille pour tous ceux qui ne sont pas éditeurs déclarés de la protection
-          // (L'élève ne pourra pas la réafficher via le menu Affichage)
           if (typeof protection.setHideSheetOnProtection === 'function') {
              protection.setHideSheetOnProtection(true);
           }
-
         } catch(eProtection) {
           Logger.log(`⚠️ Impossible de verrouiller l'onglet : ${eProtection.message}`);
         }
 
-        // Sécurité visuelle additionnelle générale
         ongletConfig.hideSheet();
-
-      } else {
-        Logger.log(`❌ Erreur critique : L'onglet "Config" est introuvable pour ${nomNouveauFichier}.`);
       }
 
       SpreadsheetApp.flush();
