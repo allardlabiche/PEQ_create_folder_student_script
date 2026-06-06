@@ -25,11 +25,11 @@ function genererDossiersEleves() {
     // =========================================================================
     // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
     // =========================================================================
-     const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
- 	  const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
-      const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
-      const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
-      const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
+    const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
+    const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
+    const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
+    const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
+    const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
     // =========================================================================
 
     // Liste des adresses emails autorisées à voir/modifier l'onglet "Config" (en minuscules)
@@ -39,7 +39,7 @@ function genererDossiersEleves() {
       "peq-c3d-mons@istlm.org"
     ];
 
-    // Récupération sécurisée de l'adresse email de la personne qui exécute le script
+    // Récupération de l'adresse email de la personne qui exécute le script
     const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
@@ -209,36 +209,32 @@ function genererDossiersEleves() {
           }
         }
 
-        // --- VERROUILLAGE ET MASQUAGE DE L'ONGLET CONFIG ---
+        // --- VERROUILLAGE ET MASQUAGE ABSOLU DE L'ONGLET CONFIG ---
         try {
-          // On vérifie si une protection existe déjà sur cet onglet, sinon on la crée
           let protections = ongletConfig.getProtections(SpreadsheetApp.ProtectionType.SHEET);
           let protection = protections.length > 0 ? protections[0] : ongletConfig.protect().setDescription('Sécurité Auto Config');
           
-          // On réinitialise les droits pour retirer les droits de modification à tout le monde
           protection.setWarningOnly(false);
           protection.removeEditors(protection.getEditors());
           
-          // On ajoute explicitement vos 3 adresses d'administration comme seules décisionnaires
           utilisateursAutorises.forEach(email => {
             try {
               protection.addEditor(email);
-            } catch(err) {
-              // Ignore si l'adresse n'a pas encore les accès au niveau du partage Drive
-            }
+            } catch(err) {}
           });
+
+          // AJOUT MAJEUR : Masque automatiquement la feuille pour tous ceux qui ne sont pas éditeurs déclarés de la protection
+          // (L'élève ne pourra pas la réafficher via le menu Affichage)
+          if (typeof protection.setHideSheetOnProtection === 'function') {
+             protection.setHideSheetOnProtection(true);
+          }
+
         } catch(eProtection) {
           Logger.log(`⚠️ Impossible de verrouiller l'onglet : ${eProtection.message}`);
         }
 
-        // Masquage automatique de la feuille
-        // Si l'adresse email détectée n'est pas vide et qu'elle est autorisée, on lui laisse visible
-        if (emailUtilisateurActuel !== "" && utilisateursAutorises.includes(emailUtilisateurActuel)) {
-          ongletConfig.showSheet();
-        } else {
-          ongletConfig.hideSheet();
-          Logger.log(`🔒 Onglet Config masqué et sécurisé pour ${nomNouveauFichier}`);
-        }
+        // Sécurité visuelle additionnelle générale
+        ongletConfig.hideSheet();
 
       } else {
         Logger.log(`❌ Erreur critique : L'onglet "Config" est introuvable pour ${nomNouveauFichier}.`);
