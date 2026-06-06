@@ -21,10 +21,12 @@ function genererDossiersEleves() {
   }
 
   try {
+    const ui = SpreadsheetApp.getUi();
+
     // =========================================================================
     // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
     // =========================================================================
-    const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
+	  const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
  	  const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
       const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
       const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
@@ -74,7 +76,12 @@ function genererDossiersEleves() {
     const dossierRacineDest = DriveApp.getFolderById(DOSSIER_DESTINATION_ID);
 
     let compteurSucces = 0;
-    let compteurDoublons = 0;
+    let compteurDoublonsIgnores = 0;
+    let compteurEcrases = 0;
+
+    // Variable pour mémoriser le choix de l'utilisateur sur la gestion des doublons
+    // null = pas encore demandé, "ecraser" = écraser, "ignorer" = passer outre
+    let choixDoublon = null;
 
     // Boucle sur chaque élève
     for (let i = 1; i < listingData.length; i++) {
@@ -91,7 +98,7 @@ function genererDossiersEleves() {
         "langue": listingData[i][5],
         "session": listingData[i][6],
         "option": listingData[i][7],
-        "4e en option": listingData[i][8],
+        "4e en option": listingData[i][8]
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
@@ -100,53 +107,84 @@ function genererDossiersEleves() {
       let optionEleveClé = optionTexte.toLowerCase();
       let sessionTexte = donneesEleve["session"] ? donneesEleve["session"].toString().trim() : "Sans Session";
 
-      // MODIFICATION 1 : Nouvelle structure du nom de fichier "nom prenom - option"
+      // Structure du nom de fichier "nom prenom - option"
       let nomNouveauFichier = `${nom} ${prenom} - ${optionTexte}`;
 
-      // MODIFICATION 2 : Création/Récupération de l'arborescence des dossiers
-      // Dossier Racine -> PEQ Biche -> Session -> Option
+      // Création/Récupération de l'arborescence des dossiers
       let dossierPEQBiche = obtenirOuCreerDossier(dossierRacineDest, "PEQ Biche");
       let dossierSession = obtenirOuCreerDossier(dossierPEQBiche, sessionTexte);
       let dossierOption = obtenirOuCreerDossier(dossierSession, optionTexte);
 
-      // ANTI-DOUBLON : Vérification si le fichier existe déjà au sein du dossier de l'option
+      // VERIFICATION DOUBLON
       let fichiersExistants = dossierOption.getFilesByName(nomNouveauFichier);
+      let fichierCible = null;
+      let existeDeja = false;
+
       if (fichiersExistants.hasNext()) {
-        Logger.log(`⏭️ Le fichier existe déjà pour l'élève ${nom} ${prenom} dans le dossier de son option. Ligne ignorée.`);
-        compteurDoublons++;
-        continue; 
+        existeDeja = true;
+        fichierCible = fichiersExistants.next();
+        
+        // Si c'est le premier doublon croisé, on demande une bonne fois pour toutes à l'utilisateur quoi faire
+        if (choixDoublon === null) {
+          let reponse = ui.alert(
+            '⚠️ Fichiers existants détectés',
+            'Certains dossiers élèves existent déjà dans les dossiers d\'options.\n\n' +
+            'Voulez-vous ÉCRASER leurs informations dans l\'onglet Config (Oui) ou bien les IGNORER (Non) ?',
+            ui.ButtonSet.YES_NO_CANCEL
+          );
+          
+          if (reponse === ui.Button.YES) {
+            choixDoublon = "ecraser";
+          } else if (reponse === ui.Button.NO) {
+            choixDoublon = "ignorer";
+          } else {
+            Logger.log("❌ Opération annulée par l'utilisateur.");
+            return; // Arrêt complet du script
+          }
+        }
       }
 
-      // SCRIPT - ACTION 1 : Créer un nouveau fichier à partir du template dans son dossier de destination final
-      let copieFichier = templateFile.makeCopy(nomNouveauFichier, dossierOption);
-      let nouveauSs = SpreadsheetApp.openById(copieFichier.getId());
-      
-      // SCRIPT - ACTION 2 : Suppression des onglets selon l'option
-      let ongletsAGarder = ongletsParOption[optionEleveClé] || [];
-      
-      if (ongletsAGarder.length > 0) {
-        let tousLesOnglets = nouveauSs.getSheets();
-        let ongletsASupprimer = [];
-        
-        tousLesOnglets.forEach(onglet => {
-          let nomOnglet = onglet.getName().trim();
-          if (!ongletsAGarder.includes(nomOnglet) && nomOnglet.toLowerCase() !== "config") {
-            ongletsASupprimer.push(onglet);
-          }
-        });
+      let nouveauSs;
 
-        if (ongletsASupprimer.length < tousLesOnglets.length) {
-          ongletsASupprimer.forEach(onglet => {
-            nouveauSs.deleteSheet(onglet);
-          });
-        } else {
-          Logger.log(`⚠️ Alerte pour ${nom} ${prenom} : Aucun des onglets requis n'a été trouvé dans le template.`);
+      // TRAITEMENT SELON LE CHOIX DES DOUBLONS
+      if (existeDeja) {
+        if (choixDoublon === "ignorer") {
+          Logger.log(`⏭️ Doublon ignoré pour l'élève : ${nomNouveauFichier}`);
+          compteurDoublonsIgnores++;
+          continue; // On passe à l'élève suivant
+        } else if (choixDoublon === "ecraser") {
+          Logger.log(`🔄 Mode Écrasement pour l'élève : ${nomNouveauFichier}`);
+          nouveauSs = SpreadsheetApp.openById(fichierCible.getId());
+          compteurEcrases++;
         }
       } else {
-        Logger.log(`⚠️ Option '${optionTexte}' inconnue ou vide pour l'élève : ${nom} ${prenom}.`);
+        // CAS NORMAL : Le fichier n'existe pas, on crée une copie du template
+        let copieFichier = templateFile.makeCopy(nomNouveauFichier, dossierOption);
+        nouveauSs = SpreadsheetApp.openById(copieFichier.getId());
+        
+        // SCRIPT - ACTION 2 : Suppression des onglets selon l'option (Uniquement sur les NOUVEAUX fichiers)
+        let ongletsAGarder = ongletsParOption[optionEleveClé] || [];
+        if (ongletsAGarder.length > 0) {
+          let tousLesOnglets = nouveauSs.getSheets();
+          let ongletsASupprimer = [];
+          
+          tousLesOnglets.forEach(onglet => {
+            let nomOnglet = onglet.getName().trim();
+            if (!ongletsAGarder.includes(nomOnglet) && nomOnglet.toLowerCase() !== "config") {
+              ongletsASupprimer.push(onglet);
+            }
+          });
+
+          if (ongletsASupprimer.length < tousLesOnglets.length) {
+            ongletsASupprimer.forEach(onglet => {
+              nouveauSs.deleteSheet(onglet);
+            });
+          }
+        }
+        compteurSucces++;
       }
 
-      // SCRIPT - ACTION 3 : Encoder les informations de l'élève UNIQUEMENT dans l'onglet "Config"
+      // SCRIPT - ACTION 3 : Dans les deux cas (Nouveau OU Écrasé), on écrit les données dans l'onglet "Config"
       let ongletConfig = nouveauSs.getSheetByName("Config");
       
       if (ongletConfig) {
@@ -161,22 +199,22 @@ function genererDossiersEleves() {
           }
         }
       } else {
-        Logger.log(`❌ Erreur critique pour ${nom} ${prenom} : L'onglet nommé "Config" est introuvable.`);
+        Logger.log(`❌ Erreur critique : L'onglet "Config" est introuvable dans le fichier de ${nomNouveauFichier}.`);
       }
 
-      // Force l'enregistrement immédiat dans Google Drive
+      // Force la sauvegarde immédiate dans le Drive
       SpreadsheetApp.flush();
-
-      compteurSucces++;
-      Logger.log(`✅ Fichier généré dans ${sessionTexte}/${optionTexte} : ${nomNouveauFichier}`);
     }
     
-    // Message de fin
-    let messageResultat = `Opération terminée !\n\n📊 Résultat :\n- ${compteurSucces} dossier(s) créé(s) et classé(s).`;
-    if (compteurDoublons > 0) {
-      messageResultat += `\n- ${compteurDoublons} élève(s) ignoré(s) car leur fichier existait déjà dans leur dossier d'option.`;
+    // Message de fin détaillé
+    let messageResultat = `Opération terminée !\n\n📊 Résultat :\n- ${compteurSucces} nouveau(x) dossier(s) créé(s).`;
+    if (compteurEcrases > 0) {
+      messageResultat += `\n- ${compteurEcrases} dossier(s) existant(s) mis à jour (données écrasées).`;
     }
-    SpreadsheetApp.getUi().alert(messageResultat);
+    if (compteurDoublonsIgnores > 0) {
+      messageResultat += `\n- ${compteurDoublonsIgnores} élève(s) ignoré(s) (fichiers déjà existants).`;
+    }
+    ui.alert(messageResultat);
 
   } catch (erreur) {
     SpreadsheetApp.getUi().alert("Une erreur est survenue : " + erreur.message);
@@ -188,9 +226,6 @@ function genererDossiersEleves() {
 /**
  * Fonction utilitaire qui cherche un sous-dossier par son nom.
  * S'il n'existe pas, elle le crée automatiquement dans le dossier parent fourni.
- * * @param {DriveApp.Folder} dossierParent Le dossier contenant.
- * @param {string} nomDossier Le nom du dossier recherché ou à créer.
- * @return {DriveApp.Folder} Le dossier trouvé ou créé.
  */
 function obtenirOuCreerDossier(dossierParent, nomDossier) {
   const dossiersTrouves = dossierParent.getFoldersByName(nomDossier);
