@@ -10,7 +10,7 @@ function onOpen() {
 
 /**
  * Fonction principale permettant de dupliquer le template, filtrer les onglets,
- * puis injecter les données sur l'ensemble des onglets conservés.
+ * puis injecter les données exclusivement dans l'onglet "Config".
  */
 function genererDossiersEleves() {
   // Verrou pour éviter les double-clics impromptus
@@ -24,7 +24,7 @@ function genererDossiersEleves() {
     // =========================================================================
     // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
     // =========================================================================
-      const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
+    const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
  	  const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
       const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
       const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
@@ -83,14 +83,14 @@ function genererDossiersEleves() {
       if (!ligneEleve[0] && !ligneEleve[1]) continue;
 
       let donneesEleve = {
-        "nom": ligneEleve[0],
-        "prenom": ligneEleve[1],
-        "naissance": ligneEleve[2],       
-        "email tuteur 1": ligneEleve[3],
-        "email tuteur 2": ligneEleve[4],  
-        "langue": ligneEleve[5],
-        "session": ligneEleve[6],
-        "option": ligneEleve[7]
+        "nom": listingData[i][0],
+        "prenom": listingData[i][1],
+        "naissance": listingData[i][2],       
+        "email tuteur 1": listingData[i][3],
+        "email tuteur 2": listingData[i][4],  
+        "langue": listingData[i][5],
+        "session": listingData[i][6],
+        "option": listingData[i][7]
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
@@ -111,7 +111,7 @@ function genererDossiersEleves() {
       let copieFichier = templateFile.makeCopy(nomNouveauFichier, dossierDest);
       let nouveauSs = SpreadsheetApp.openById(copieFichier.getId());
       
-      // SCRIPT - ACTION 2 : Suppression des onglets selon l'option (Fait en premier)
+      // SCRIPT - ACTION 2 : Suppression des onglets selon l'option
       let ongletsAGarder = ongletsParOption[optionEleve] || [];
       
       if (ongletsAGarder.length > 0) {
@@ -120,7 +120,8 @@ function genererDossiersEleves() {
         
         tousLesOnglets.forEach(onglet => {
           let nomOnglet = onglet.getName().trim();
-          if (!ongletsAGarder.includes(nomOnglet)) {
+          // SÉCURITÉ : On ne supprime JAMAIS l'onglet nommé "Config" (insensible à la casse)
+          if (!ongletsAGarder.includes(nomOnglet) && nomOnglet.toLowerCase() !== "config") {
             ongletsASupprimer.push(onglet);
           }
         });
@@ -136,23 +137,25 @@ function genererDossiersEleves() {
         Logger.log(`⚠️ Option '${optionEleve}' inconnue ou vide pour l'élève : ${nom} ${prenom}.`);
       }
 
-      // SCRIPT - ACTION 3 : Encoder les informations de l'élève sur TOUS les onglets restants
-      let ongletsRestants = nouveauSs.getSheets();
+      // SCRIPT - ACTION 3 : Encoder les informations de l'élève UNIQUEMENT dans l'onglet "Config"
+      let ongletConfig = nouveauSs.getSheetByName("Config");
       
-      ongletsRestants.forEach(ongletCible => {
+      if (ongletConfig) {
         for (let cle in cellMapping) {
           if (donneesEleve[cle] !== undefined && donneesEleve[cle] !== "") {
             let celluleCible = cellMapping[cle];
             try {
-              ongletCible.getRange(celluleCible).setValue(donneesEleve[cle]);
+              ongletConfig.getRange(celluleCible).setValue(donneesEleve[cle]);
             } catch(e) {
-              Logger.log(`⚠️ Erreur d'écriture dans l'onglet [${ongletCible.getName()}] pour ${nom} : ${e.message}`);
+              Logger.log(`⚠️ Erreur d'écriture dans l'onglet [Config] pour ${nom} : ${e.message}`);
             }
           }
         }
-      });
+      } else {
+        Logger.log(`❌ Erreur critique pour ${nom} ${prenom} : L'onglet nommé "Config" est introuvable dans ce template.`);
+      }
 
-      // Force la sauvegarde immédiate des modifications sur le fichier de l'élève avant de passer au suivant
+      // Force l'enregistrement immédiat dans Google Drive
       SpreadsheetApp.flush();
 
       compteurSucces++;
