@@ -71,7 +71,7 @@ function genererDossiersEleves() {
     const listingData = listingSheet.getDataRange().getValues();
     
     const templateFile = DriveApp.getFileById(TEMPLATE_ID);
-    const dossierDest = DriveApp.getFolderById(DOSSIER_DESTINATION_ID);
+    const dossierRacineDest = DriveApp.getFolderById(DOSSIER_DESTINATION_ID);
 
     let compteurSucces = 0;
     let compteurDoublons = 0;
@@ -90,29 +90,39 @@ function genererDossiersEleves() {
         "email tuteur 2": listingData[i][4],  
         "langue": listingData[i][5],
         "session": listingData[i][6],
-        "option": listingData[i][7]
+        "option": listingData[i][7],
+        "4e en option": listingData[i][8],
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
       let prenom = donneesEleve["prenom"] ? donneesEleve["prenom"].toString().trim() : "";
-      let optionEleve = donneesEleve["option"] ? donneesEleve["option"].toString().trim().toLowerCase() : "";
+      let optionTexte = donneesEleve["option"] ? donneesEleve["option"].toString().trim() : "Sans Option";
+      let optionEleveClé = optionTexte.toLowerCase();
+      let sessionTexte = donneesEleve["session"] ? donneesEleve["session"].toString().trim() : "Sans Session";
 
-      let nomNouveauFichier = `Dossier_PEQ_${nom}_${prenom}`;
+      // MODIFICATION 1 : Nouvelle structure du nom de fichier "nom prenom - option"
+      let nomNouveauFichier = `${nom} ${prenom} - ${optionTexte}`;
 
-      // ANTI-DOUBLON : Vérification si le fichier existe déjà
-      let fichiersExistants = dossierDest.getFilesByName(nomNouveauFichier);
+      // MODIFICATION 2 : Création/Récupération de l'arborescence des dossiers
+      // Dossier Racine -> PEQ Biche -> Session -> Option
+      let dossierPEQBiche = obtenirOuCreerDossier(dossierRacineDest, "PEQ Biche");
+      let dossierSession = obtenirOuCreerDossier(dossierPEQBiche, sessionTexte);
+      let dossierOption = obtenirOuCreerDossier(dossierSession, optionTexte);
+
+      // ANTI-DOUBLON : Vérification si le fichier existe déjà au sein du dossier de l'option
+      let fichiersExistants = dossierOption.getFilesByName(nomNouveauFichier);
       if (fichiersExistants.hasNext()) {
-        Logger.log(`⏭️ Le fichier existe déjà pour l'élève ${nom} ${prenom}. Ligne ignorée.`);
+        Logger.log(`⏭️ Le fichier existe déjà pour l'élève ${nom} ${prenom} dans le dossier de son option. Ligne ignorée.`);
         compteurDoublons++;
         continue; 
       }
 
-      // SCRIPT - ACTION 1 : Créer un nouveau fichier à partir du template
-      let copieFichier = templateFile.makeCopy(nomNouveauFichier, dossierDest);
+      // SCRIPT - ACTION 1 : Créer un nouveau fichier à partir du template dans son dossier de destination final
+      let copieFichier = templateFile.makeCopy(nomNouveauFichier, dossierOption);
       let nouveauSs = SpreadsheetApp.openById(copieFichier.getId());
       
       // SCRIPT - ACTION 2 : Suppression des onglets selon l'option
-      let ongletsAGarder = ongletsParOption[optionEleve] || [];
+      let ongletsAGarder = ongletsParOption[optionEleveClé] || [];
       
       if (ongletsAGarder.length > 0) {
         let tousLesOnglets = nouveauSs.getSheets();
@@ -120,7 +130,6 @@ function genererDossiersEleves() {
         
         tousLesOnglets.forEach(onglet => {
           let nomOnglet = onglet.getName().trim();
-          // SÉCURITÉ : On ne supprime JAMAIS l'onglet nommé "Config" (insensible à la casse)
           if (!ongletsAGarder.includes(nomOnglet) && nomOnglet.toLowerCase() !== "config") {
             ongletsASupprimer.push(onglet);
           }
@@ -134,7 +143,7 @@ function genererDossiersEleves() {
           Logger.log(`⚠️ Alerte pour ${nom} ${prenom} : Aucun des onglets requis n'a été trouvé dans le template.`);
         }
       } else {
-        Logger.log(`⚠️ Option '${optionEleve}' inconnue ou vide pour l'élève : ${nom} ${prenom}.`);
+        Logger.log(`⚠️ Option '${optionTexte}' inconnue ou vide pour l'élève : ${nom} ${prenom}.`);
       }
 
       // SCRIPT - ACTION 3 : Encoder les informations de l'élève UNIQUEMENT dans l'onglet "Config"
@@ -152,20 +161,20 @@ function genererDossiersEleves() {
           }
         }
       } else {
-        Logger.log(`❌ Erreur critique pour ${nom} ${prenom} : L'onglet nommé "Config" est introuvable dans ce template.`);
+        Logger.log(`❌ Erreur critique pour ${nom} ${prenom} : L'onglet nommé "Config" est introuvable.`);
       }
 
       // Force l'enregistrement immédiat dans Google Drive
       SpreadsheetApp.flush();
 
       compteurSucces++;
-      Logger.log(`✅ Fichier généré et complété avec succès : ${nomNouveauFichier}`);
+      Logger.log(`✅ Fichier généré dans ${sessionTexte}/${optionTexte} : ${nomNouveauFichier}`);
     }
     
     // Message de fin
-    let messageResultat = `Opération terminée !\n\n📊 Résultat :\n- ${compteurSucces} dossier(s) créé(s) et complété(s).`;
+    let messageResultat = `Opération terminée !\n\n📊 Résultat :\n- ${compteurSucces} dossier(s) créé(s) et classé(s).`;
     if (compteurDoublons > 0) {
-      messageResultat += `\n- ${compteurDoublons} élève(s) ignoré(s) car leur fichier existait déjà.`;
+      messageResultat += `\n- ${compteurDoublons} élève(s) ignoré(s) car leur fichier existait déjà dans leur dossier d'option.`;
     }
     SpreadsheetApp.getUi().alert(messageResultat);
 
@@ -174,4 +183,19 @@ function genererDossiersEleves() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Fonction utilitaire qui cherche un sous-dossier par son nom.
+ * S'il n'existe pas, elle le crée automatiquement dans le dossier parent fourni.
+ * * @param {DriveApp.Folder} dossierParent Le dossier contenant.
+ * @param {string} nomDossier Le nom du dossier recherché ou à créer.
+ * @return {DriveApp.Folder} Le dossier trouvé ou créé.
+ */
+function obtenirOuCreerDossier(dossierParent, nomDossier) {
+  const dossiersTrouves = dossierParent.getFoldersByName(nomDossier);
+  if (dossiersTrouves.hasNext()) {
+    return dossiersTrouves.next();
+  }
+  return dossierParent.createFolder(nomDossier);
 }
