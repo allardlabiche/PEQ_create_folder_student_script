@@ -25,12 +25,22 @@ function genererDossiersEleves() {
     // =========================================================================
     // CONFIGURATION : Remplacez les ID ci-dessous par ceux de vos fichiers
     // =========================================================================
-      const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
+     const TEMPLATE_ID = '1T6Y6_KU_sPD9n0md4MIo1-MhTruZKXDnTZrARKEUFpc';
  	  const LISTING_ID = '1YMs87I-S6VwxonXUjeI39EL8I7kAxlQtHPq6hkj9cDA';
       const REPARTITION_ID = '11icTLAFSl4QL-GPvtJBJ9049hNt868IwxOQhMk7D-tk';
       const CONFIG_CELLULE_ID = '1_VuaG2OsFAYpW29X8cClXhnvQvVH_5R1TN0QBt2jwCU';
       const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
     // =========================================================================
+
+    // Liste des adresses emails autorisées à voir l'onglet "Config" (en minuscules)
+    const utilisateursAutorises = [
+      "benjamin.allard@istlm.org",
+      "peq-c3d-biche@istlm.org",
+      "peq-c3d-mons@istlm.org"
+    ];
+
+    // Récupération de l'adresse email de la personne qui exécute le script actuellement
+    const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
     const configSs = SpreadsheetApp.openById(CONFIG_CELLULE_ID);
@@ -42,7 +52,6 @@ function genererDossiersEleves() {
       let cle = configData[i][0];
       let cellule = configData[i][1];
       if (cle && cellule) {
-        // Sécurité : Nettoie les espaces multiples et passe en minuscules
         let cleNettoyee = cle.toString().replace(/\s+/g, ' ').trim().toLowerCase();
         cellMapping[cleNettoyee] = cellule.toString().trim();
       }
@@ -99,7 +108,7 @@ function genererDossiersEleves() {
         "option": listingData[i][7],
         "4e en option": listingData[i][8],
         "affichage": listingData[i][9],
-        "matricule": listingData[i][10],
+        "matricule": listingData[i][10]
       };
 
       let nom = donneesEleve["nom"] ? donneesEleve["nom"].toString().trim() : "";
@@ -187,9 +196,7 @@ function genererDossiersEleves() {
             try {
               let rangeCible = ongletConfig.getRange(celluleCible);
               
-              // MODIFICATION ICI : Sécurité pour le format Date
               if (valeur instanceof Date) {
-                // On formate la date proprement avant de l'écrire pour éviter le format Timestamp numérique
                 let dateFormatee = Utilities.formatDate(valeur, nouveauSs.getSpreadsheetTimeZone(), "dd/MM/yyyy");
                 rangeCible.setValue(dateFormatee);
               } else {
@@ -201,6 +208,17 @@ function genererDossiersEleves() {
             }
           }
         }
+
+        // GESTION DE LA VISIBILITÉ DE L'ONGLET CONFIG SUR LES COPIES ELEVES
+        // Si l'utilisateur actuel n'est PAS dans la liste des autorisés, on masque l'onglet
+        if (!utilisateursAutorises.includes(emailUtilisateurActuel)) {
+          ongletConfig.hideSheet();
+          Logger.log(`🔒 Onglet Config masqué pour la copie de ${nomNouveauFichier}`);
+        } else {
+          // Si c'est vous qui générez (ou un email autorisé), on s'assure qu'il reste visible pour vous
+          ongletConfig.showSheet();
+        }
+
       } else {
         Logger.log(`❌ Erreur critique : L'onglet "Config" est introuvable pour ${nomNouveauFichier}.`);
       }
