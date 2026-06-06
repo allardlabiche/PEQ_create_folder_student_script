@@ -32,14 +32,14 @@ function genererDossiersEleves() {
       const DOSSIER_DESTINATION_ID = '163rsNwi2QAv0AdLPGcFC1NiD8oVmJoVc'; 
     // =========================================================================
 
-    // Liste des adresses emails autorisées à voir l'onglet "Config" (en minuscules)
+    // Liste des adresses emails autorisées à voir/modifier l'onglet "Config" (en minuscules)
     const utilisateursAutorises = [
       "benjamin.allard@istlm.org",
       "peq-c3d-biche@istlm.org",
       "peq-c3d-mons@istlm.org"
     ];
 
-    // Récupération de l'adresse email de la personne qui exécute le script actuellement
+    // Récupération sécurisée de l'adresse email de la personne qui exécute le script
     const emailUtilisateurActuel = Session.getActiveUser().getEmail().toLowerCase().trim();
 
     // 1. Chargement du fichier de configuration des cellules (Fichier 4)
@@ -209,14 +209,35 @@ function genererDossiersEleves() {
           }
         }
 
-        // GESTION DE LA VISIBILITÉ DE L'ONGLET CONFIG SUR LES COPIES ELEVES
-        // Si l'utilisateur actuel n'est PAS dans la liste des autorisés, on masque l'onglet
-        if (!utilisateursAutorises.includes(emailUtilisateurActuel)) {
-          ongletConfig.hideSheet();
-          Logger.log(`🔒 Onglet Config masqué pour la copie de ${nomNouveauFichier}`);
-        } else {
-          // Si c'est vous qui générez (ou un email autorisé), on s'assure qu'il reste visible pour vous
+        // --- VERROUILLAGE ET MASQUAGE DE L'ONGLET CONFIG ---
+        try {
+          // On vérifie si une protection existe déjà sur cet onglet, sinon on la crée
+          let protections = ongletConfig.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+          let protection = protections.length > 0 ? protections[0] : ongletConfig.protect().setDescription('Sécurité Auto Config');
+          
+          // On réinitialise les droits pour retirer les droits de modification à tout le monde
+          protection.setWarningOnly(false);
+          protection.removeEditors(protection.getEditors());
+          
+          // On ajoute explicitement vos 3 adresses d'administration comme seules décisionnaires
+          utilisateursAutorises.forEach(email => {
+            try {
+              protection.addEditor(email);
+            } catch(err) {
+              // Ignore si l'adresse n'a pas encore les accès au niveau du partage Drive
+            }
+          });
+        } catch(eProtection) {
+          Logger.log(`⚠️ Impossible de verrouiller l'onglet : ${eProtection.message}`);
+        }
+
+        // Masquage automatique de la feuille
+        // Si l'adresse email détectée n'est pas vide et qu'elle est autorisée, on lui laisse visible
+        if (emailUtilisateurActuel !== "" && utilisateursAutorises.includes(emailUtilisateurActuel)) {
           ongletConfig.showSheet();
+        } else {
+          ongletConfig.hideSheet();
+          Logger.log(`🔒 Onglet Config masqué et sécurisé pour ${nomNouveauFichier}`);
         }
 
       } else {
